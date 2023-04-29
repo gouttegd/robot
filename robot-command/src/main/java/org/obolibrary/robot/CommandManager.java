@@ -205,7 +205,7 @@ public class CommandManager implements Command {
    *
    * @return the custom class loader
    */
-  private ClassLoader getClassLoader() {
+  public ClassLoader getClassLoader() {
     if (classLoader == null) {
       File pluginsDir = new File(System.getProperty("user.home"), ".robot/plugins");
       if (pluginsDir.isDirectory()) {

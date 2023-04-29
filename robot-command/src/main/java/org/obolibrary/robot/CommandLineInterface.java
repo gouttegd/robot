@@ -1,5 +1,6 @@
 package org.obolibrary.robot;
 
+import java.util.ServiceLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,6 +47,16 @@ public class CommandLineInterface {
     m.addCommand("unmerge", new UnmergeCommand());
     m.addCommand("validate-profile", new ValidateProfileCommand());
     m.addCommand("verify", new VerifyCommand());
+
+    /* Add commands provided by any plugin available in the class path. */
+    ServiceLoader<ICommandProvider> plugins =
+        ServiceLoader.load(ICommandProvider.class, m.getClassLoader());
+    for (ICommandProvider plugin : plugins) {
+      for (Command cmd : plugin.getCommands()) {
+        m.addCommand(cmd.getName(), cmd);
+      }
+    }
+
     return m;
   }
 
