@@ -192,6 +192,30 @@ public class CommandManager implements Command {
   }
 
   /**
+   * Check if the given command name corresponds to an available command. If there is no built-in
+   * command with that name, try to load a class from the class path.
+   *
+   * @param commandName the name of the command to load
+   * @return True if a command (built-in or not) was found, false otherwise
+   */
+  private boolean findCommand(String commandName) {
+    if (commands.containsKey(commandName)) {
+      return true;
+    }
+
+    try {
+      Class<?> commandClass = Class.forName(commandName);
+      Command command = commandClass.asSubclass(Command.class).newInstance();
+      commands.put(commandName, command);
+      return true;
+    } catch (Exception e) {
+      return false;
+    } catch (NoClassDefFoundError e) {
+      return false;
+    }
+  }
+
+  /**
    * Given an input state, global option strings, and remaining command-line argument strings, use
    * as many arguments as needed to execute a single command. The arguments used by the command are
    * removed from the arguments list, which can then be used to execute further commands.
@@ -213,8 +237,8 @@ public class CommandManager implements Command {
       throw new IllegalArgumentException(missingCommandError);
     }
 
-    commandName = commandName.trim().toLowerCase();
-    if (!commands.containsKey(commandName)) {
+    commandName = commandName.trim();
+    if (!findCommand(commandName)) {
       throw new IllegalArgumentException(String.format(unknownArgError, commandName));
     }
 
@@ -234,7 +258,7 @@ public class CommandManager implements Command {
     // Check to make sure the next provided arg is a valid command after parsing Option Args
     if (!arguments.isEmpty()) {
       String nextArg = arguments.get(0);
-      if (!commands.keySet().contains(nextArg)) {
+      if (!findCommand(nextArg)) {
         throw new IllegalArgumentException(String.format(unknownArgError, nextArg));
       }
     }
