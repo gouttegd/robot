@@ -1,5 +1,10 @@
 package org.obolibrary.robot;
 
+import java.io.File;
+import java.io.FilenameFilter;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -41,6 +46,9 @@ public class CommandManager implements Command {
 
   /** Store a map from command names to Command objects. */
   private Map<String, Command> commands = new LinkedHashMap<>();
+
+  /** Custom class loader for pluggable commands. */
+  private ClassLoader classLoader = null;
 
   /** Initialze the command. */
   public CommandManager() {
@@ -192,6 +200,49 @@ public class CommandManager implements Command {
   }
 
   /**
+   * Get a class loader that can load classes from any Jar file in a per-user plugins directory in
+   * addition to the normal class path.
+   *
+   * @return the custom class loader
+   */
+  private ClassLoader getClassLoader() {
+    if (classLoader == null) {
+      File pluginsDir = new File(System.getProperty("user.home"), ".robot/plugins");
+      if (pluginsDir.isDirectory()) {
+        FilenameFilter jarFilter =
+            new FilenameFilter() {
+              @Override
+              public boolean accept(File file, String name) {
+                return name.endsWith(".jar");
+              }
+            };
+
+        ArrayList<URL> jarURLs = new ArrayList<URL>();
+        for (File jarFile : pluginsDir.listFiles(jarFilter)) {
+          try {
+            jarURLs.add(jarFile.toURI().toURL());
+          } catch (MalformedURLException e) {
+            // This should never happen: the URL is constructed by the Java Class Library
+            // from a real filename, it should never be malformed.
+          }
+        }
+
+        if (jarURLs.size() > 0) {
+          URL[] urlArrays = new URL[jarURLs.size()];
+          jarURLs.toArray(urlArrays);
+          classLoader = URLClassLoader.newInstance(urlArrays);
+        }
+      }
+
+      if (classLoader == null) {
+        classLoader = ClassLoader.getSystemClassLoader();
+      }
+    }
+
+    return classLoader;
+  }
+
+  /**
    * Check if the given command name corresponds to an available command. If there is no built-in
    * command with that name, try to load a class from the class path.
    *
@@ -204,7 +255,7 @@ public class CommandManager implements Command {
     }
 
     try {
-      Class<?> commandClass = Class.forName(commandName);
+      Class<?> commandClass = getClassLoader().loadClass(commandName);
       Command command = commandClass.asSubclass(Command.class).newInstance();
       commands.put(commandName, command);
       return true;
