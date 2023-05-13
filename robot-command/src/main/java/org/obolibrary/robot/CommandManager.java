@@ -7,6 +7,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -200,39 +201,64 @@ public class CommandManager implements Command {
   }
 
   /**
-   * Get a class loader that can load classes from any Jar file in a per-user plugins directory in
+   * Get a class loader that can load classes from any Jar file in the given list of directories. If
+   * a Jar file with the same name is found in more than one directory, the last one found takes
+   * precedence.
+   *
+   * @param directories the list of directories to look into
+   * @return the new class loader, or null if no Jar file was found in any directory
+   */
+  private ClassLoader getClassLoader(String[] directories) {
+    HashMap<String, URL> jars = new HashMap<String, URL>();
+    FilenameFilter jarFilter =
+        new FilenameFilter() {
+          @Override
+          public boolean accept(File file, String name) {
+            return name.endsWith(".jar");
+          }
+        };
+
+    for (String directoryName : directories) {
+      if (directoryName == null || directoryName.length() == 0) {
+        continue;
+      }
+
+      File directory = new File(directoryName);
+      if (directory.isDirectory()) {
+        for (File jarFile : directory.listFiles(jarFilter)) {
+          try {
+            jars.put(jarFile.getName(), jarFile.toURI().toURL());
+          } catch (MalformedURLException e) {
+            // This should never happen: the URL is constructed by the Java Class Library
+            // from a real filename, it should never be malformed.
+          }
+        }
+      }
+    }
+
+    if (jars.size() > 0) {
+      URL[] urlArrays = new URL[jars.size()];
+      jars.values().toArray(urlArrays);
+      return URLClassLoader.newInstance(urlArrays);
+    }
+
+    return null;
+  }
+
+  /**
+   * Get a class loader that can load classes from any Jar file in a selection of directories in
    * addition to the normal class path.
    *
    * @return the custom class loader
    */
   public ClassLoader getClassLoader() {
     if (classLoader == null) {
-      File pluginsDir = new File(System.getProperty("user.home"), ".robot/plugins");
-      if (pluginsDir.isDirectory()) {
-        FilenameFilter jarFilter =
-            new FilenameFilter() {
-              @Override
-              public boolean accept(File file, String name) {
-                return name.endsWith(".jar");
-              }
-            };
-
-        ArrayList<URL> jarURLs = new ArrayList<URL>();
-        for (File jarFile : pluginsDir.listFiles(jarFilter)) {
-          try {
-            jarURLs.add(jarFile.toURI().toURL());
-          } catch (MalformedURLException e) {
-            // This should never happen: the URL is constructed by the Java Class Library
-            // from a real filename, it should never be malformed.
-          }
-        }
-
-        if (jarURLs.size() > 0) {
-          URL[] urlArrays = new URL[jarURLs.size()];
-          jarURLs.toArray(urlArrays);
-          classLoader = URLClassLoader.newInstance(urlArrays);
-        }
-      }
+      String[] pluginsDirectories = {
+        System.getProperty("robot.pluginsdir"),
+        System.getenv("ROBOT_PLUGINS_DIRECTORY"),
+        new File(System.getProperty("user.home"), ".robot/plugins").getPath()
+      };
+      classLoader = getClassLoader(pluginsDirectories);
 
       if (classLoader == null) {
         classLoader = ClassLoader.getSystemClassLoader();
